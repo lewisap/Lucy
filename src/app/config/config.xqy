@@ -93,3 +93,8 @@ declare variable $c:LABELS :=
       <value xml:lang="en">Sample Facet</value>
     </label>
   </labels>;
+
+declare variable $c:lucy-profiling-enabled := "all";
+declare variable $c:lucy-qm-enabled := ();
+declare variable $c:lucy-profile-controllers := ();
+declare variable $c:lucy-qm-controllers := ();

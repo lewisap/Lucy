@@ -23,6 +23,7 @@ import module namespace def = "http://marklogic.com/roxy/defaults" at "/roxy/con
 import module namespace req = "http://marklogic.com/roxy/request" at "/roxy/lib/request.xqy";
 import module namespace rh = "http://marklogic.com/roxy/routing-helper" at "/roxy/lib/routing-helper.xqy";
 import module namespace u = "http://marklogic.com/roxy/util" at "/roxy/lib/util.xqy";
+import module namespace l = "http://marklogic.com/roxy/lucy" at "/roxy/lib/lucy.xqy";
 
 declare option xdmp:mapping "false";
 
@@ -49,13 +50,15 @@ declare variable $default-layout as xs:string? :=
 :)
 declare variable $debug-header as xs:string? := xdmp:get-request-header("X-ML-Profile", "no");
 
+declare variable $enable-profiling := ($debug-header eq "yes" or l:is-profiling-enabled());
+
 (:
   Start profiling the request, if the profiling header is set to yes.
 :)
 declare function router:start-profiling() {
   let $request-id := xdmp:request()
   return 
-    if ($debug-header = "yes") 
+    if ($enable-profiling) 
       then
         (xdmp:log("Staring profiling: "||$debug-header), prof:enable($request-id), $request-id)
       else 
@@ -66,7 +69,7 @@ declare function router:start-profiling() {
   Finish porfiling, generating and returning the report.
 :)
 declare function router:end-profiling($request-id) {
-  if ($debug-header = "yes")
+  if ($enable-profiling)
     then
       (xdmp:log("Ending profiling"), prof:disable($request-id), prof:report($request-id))
     else
@@ -140,8 +143,10 @@ declare function router:compute-final-view($view, $layout, $data, $format) {
   on format, layout, etc.), the profile report, and the expected response
   format.
 :)
-declare function router:multipart-response($final-view, $profile-report, $format) {
+declare function router:multipart-response($final-view, $profile-data, $format, $qm-report, $profile-report) {
   let $boundary-string := xs:string(xdmp:request())
+  let $strip-doctype := if (fn:count($final-view) gt 1) then $final-view[last()] else $final-view
+  let $_ := xdmp:log($strip-doctype)
   return
     (
       xdmp:set-response-content-type("multipart/mixed"),  
@@ -157,10 +162,12 @@ declare function router:multipart-response($final-view, $profile-report, $format
         <part>
           <headers>
             <Content-Type>vnd.x-ml-profile/xml</Content-Type>
+            <Query-Meter-Report>{$qm-report}</Query-Meter-Report>
+            <Profile-Report>{$profile-report}</Profile-Report>
           </headers>
         </part>
       </manifest>,
-      ($final-view, $profile-report)))
+      ($strip-doctype, $profile-data)))
 };
 
 
@@ -177,12 +184,20 @@ declare function router:route()
   :)
   let $request-id := router:start-profiling()
   let $data :=  
-    xdmp:apply(
+    (xdmp:apply(
       xdmp:function(
         fn:QName(fn:concat("http://marklogic.com/roxy/controller/", $controller), $func),
-        $controller-path))
-  let $profile-report := router:end-profiling($request-id)
+        $controller-path)), xdmp:query-meters())
+
+  let $_ := xdmp:log($data)
+  let $profile-data := router:end-profiling($request-id)
   
+  let $qm-data := if (fn:count($data) lt 2) then $data else $data[2]
+  let $data := if (fn:count($data) lt 2) then () else $data[1]
+
+  let $qm-report := l:store-qm-data($qm-data)
+  let $profile-report := l:store-profile-data($profile-data)
+
   (: Roxy options :)
   let $options :=
     for $key in map:keys($ch:map)
@@ -210,7 +225,6 @@ declare function router:route()
     else
       $default-layout
 
-  let $_ := xdmp:log("computing final result")
   (:
     Compute the final view depending on the layout, view, data and format.  This is what will
     be returned to the consumer.  If there is a profile report, then return a multipart 
@@ -218,9 +232,9 @@ declare function router:route()
   :)
   let $final-view := router:compute-final-view($view, $layout, $data, $format)
   return 
-    if (fn:exists($profile-report))
+    if (fn:exists($profile-data))
       then
-        router:multipart-response($final-view, $profile-report, $format)
+        router:multipart-response($final-view, $profile-data, $format, $qm-report, $profile-report)
       else
         (rh:set-content-type($format), $final-view)
 
