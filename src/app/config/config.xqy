@@ -94,7 +94,7 @@ declare variable $c:LABELS :=
     </label>
   </labels>;
 
-declare variable $c:lucy-profiling-enabled := "all";
+declare variable $c:lucy-profiling-enabled := "none";
 declare variable $c:lucy-qm-enabled := ();
 declare variable $c:lucy-profile-controllers := ();
 declare variable $c:lucy-qm-controllers := ();

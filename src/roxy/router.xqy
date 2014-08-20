@@ -143,7 +143,7 @@ declare function router:compute-final-view($view, $layout, $data, $format) {
   on format, layout, etc.), the profile report, and the expected response
   format.
 :)
-declare function router:multipart-response($final-view, $profile-data, $format, $qm-report, $profile-report) {
+declare function router:multipart-response($final-view, $profile-data, $format, $profile-report) {
   let $boundary-string := xs:string(xdmp:request())
   let $strip-doctype := if (fn:count($final-view) gt 1) then $final-view[last()] else $final-view
   let $_ := xdmp:log($strip-doctype)
@@ -162,7 +162,6 @@ declare function router:multipart-response($final-view, $profile-data, $format, 
         <part>
           <headers>
             <Content-Type>vnd.x-ml-profile/xml</Content-Type>
-            <Query-Meter-Report>{$qm-report}</Query-Meter-Report>
             <Profile-Report>{$profile-report}</Profile-Report>
           </headers>
         </part>
@@ -195,7 +194,6 @@ declare function router:route()
   let $qm-data := if (fn:count($data) lt 2) then $data else $data[2]
   let $data := if (fn:count($data) lt 2) then () else $data[1]
 
-  let $qm-report := l:store-qm-data($qm-data)
   let $profile-report := l:store-profile-data($profile-data)
 
   (: Roxy options :)
@@ -234,7 +232,7 @@ declare function router:route()
   return 
     if (fn:exists($profile-data))
       then
-        router:multipart-response($final-view, $profile-data, $format, $qm-report, $profile-report)
+        router:multipart-response($final-view, $profile-data, $format, $profile-report)
       else
         (rh:set-content-type($format), $final-view)
 
